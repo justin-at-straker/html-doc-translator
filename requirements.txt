@@ -1,0 +1,8 @@
+fastapi[all]
+google-cloud-translate
+beautifulsoup4
+uvicorn
+rich
+python-dotenv
+openai
+python-multipart 
