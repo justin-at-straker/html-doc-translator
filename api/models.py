@@ -3,9 +3,13 @@ from pydantic import BaseModel, Field
 
 
 class TranslationRequest(BaseModel):
-    """Request model for HTML translation."""
+    """Request model for HTML translation.
     
-    html: str = Field(..., description="Raw HTML string to translate")
+    Represents the data structure for translation parameters, 
+    though not directly used as body for form-based /translate endpoint.
+    """
+    
+    html: str = Field(..., description="Raw HTML string to translate (used if not file upload)")
     target_lang: str = Field(..., description="BCP-47 language code (e.g. fr, es-419)")
     source_lang: str | None = Field(
         None, description="Optional source language code"
@@ -16,6 +20,9 @@ class TranslationRequest(BaseModel):
 
 
 class TranslationResponse(BaseModel):
-    """Response model for HTML translation."""
+    """Response model for HTML translation if returning JSON.
     
+    Note: The /translate endpoint currently returns a FileResponse directly.
+    This model would be used if an endpoint returned translated HTML in a JSON payload.
+    """
     html: str = Field(..., description="Translated HTML") 

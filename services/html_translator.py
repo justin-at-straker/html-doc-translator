@@ -1,12 +1,15 @@
 """HTML translation service."""
 from typing import Iterable
 from fastapi import UploadFile
+import logging # Import logging
 
 from bs4 import BeautifulSoup, Comment, Doctype, NavigableString
 
 from providers import get_translation_provider
-from providers.openai import OpenAITranslationProvider
+# from providers.openai import OpenAITranslationProvider # Not directly used here anymore for isinstance checks
 from .exceptions import FileDecodingError, EmptyFileError, FileProcessingError
+
+logger = logging.getLogger(__name__)
 
 # HTML tags to skip during translation
 SKIP_TAGS = {
@@ -52,10 +55,14 @@ async def get_html_from_upload_file(html_file: UploadFile) -> str:
     except FileProcessingError:
         raise
     except Exception as e:
+        logger.exception(f"An unexpected error occurred while processing file {html_file.filename if html_file else 'unknown'}")
         raise FileProcessingError(f"An unexpected error occurred while processing the file: {e}") from e
     finally:
-        if hasattr(html_file, 'close'):
-            await html_file.close()
+        if hasattr(html_file, 'close') and callable(html_file.close):
+            try:
+                await html_file.close()
+            except Exception as e:
+                logger.error(f"Error closing uploaded file {html_file.filename if html_file else 'unknown'}: {e}")
 
 
 def _iter_nodes(soup: BeautifulSoup) -> Iterable[NavigableString]:
@@ -97,33 +104,34 @@ async def translate_html(
     soup = BeautifulSoup(html, "html.parser")
     nodes = list(_iter_nodes(soup))
     
-    # No text to translate
     if not nodes:
+        logger.info("No text nodes found in HTML to translate.")
         return html
         
-    # Get the configured translation provider
     translator = get_translation_provider()
+    logger.info(f"Using translator: {type(translator).__name__} for {len(nodes)} nodes.")
     
-    # Process nodes in batches
+    translated_strings_count = 0
     for i in range(0, len(nodes), batch_size):
         chunk = nodes[i:i + batch_size]
+        node_strings = [n.string for n in chunk]
         
-        # Use the async method if the provider supports it
         if hasattr(translator, 'translate_batch_async'):
             translations = await translator.translate_batch_async(
-                [n.string for n in chunk], 
+                node_strings, 
                 target_lang, 
                 source_lang
             )
-        else: # Fallback to sync method for other providers
+        else:
             translations = translator.translate_batch(
-                [n.string for n in chunk], 
+                node_strings, 
                 target_lang, 
                 source_lang
             )
         
-        # Replace original text with translations
         for node, translation in zip(chunk, translations):
             node.replace_with(NavigableString(translation))
+            translated_strings_count += 1
             
+    logger.info(f"Translated {translated_strings_count} text nodes.")
     return str(soup) 

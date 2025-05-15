@@ -1,14 +1,16 @@
 """Google Cloud Translation provider implementation."""
+import logging
 from functools import lru_cache
 from typing import List, Tuple
 
-from fastapi import HTTPException
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import translate_v3 as translate
 
 from config import get_settings
 from providers.base import TranslationProvider
+from services.exceptions import TranslationAPIError
 
+logger = logging.getLogger(__name__)
 
 class GoogleTranslationProvider(TranslationProvider):
     """Google Cloud Translation API provider."""
@@ -23,6 +25,9 @@ class GoogleTranslationProvider(TranslationProvider):
         settings = get_settings()
         
         if not settings.gcp_project_id:
+            # This RuntimeError will be caught by FastAPI and converted to a 500 error.
+            # Proper error handling in the calling code (service/API layer) is expected for user-facing messages.
+            logger.error("GCP_PROJECT_ID env var not set. GoogleTranslationProvider cannot be initialized.")
             raise RuntimeError("GCP_PROJECT_ID env var not set")
             
         client = translate.TranslationServiceClient()
@@ -43,4 +48,5 @@ class GoogleTranslationProvider(TranslationProvider):
             )
             return [t.translated_text for t in resp.translations]
         except GoogleAPICallError as e:
-            raise HTTPException(502, f"Translation API error: {e.message}") from e 
+            logger.exception(f"Google Cloud Translation API error: {e.message}")
+            raise TranslationAPIError(provider_name="Google Cloud", original_exception=e, detail=e.message) from e 
